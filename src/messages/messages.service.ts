@@ -39,7 +39,7 @@ export class MessagesService {
       },
     };
 
-    return this.sendMessage(payload);
+    return await this.sendMessage(payload);
   }
 
   async sendTemplateMessage(dto: SendTemplateMessageDto): Promise<Record<string, unknown>> {
@@ -162,6 +162,7 @@ export class MessagesService {
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     try {
+      console.log('PAYLOAD BEFORE POST: ', payload);
       const { data } = await this.http.post<Record<string, unknown>>('/messages', payload);
       console.log(data);
       return data;
