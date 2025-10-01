@@ -28,6 +28,7 @@ export class MessagesService {
   }
 
   async sendTextMessage(dto: SendTextMessageDto): Promise<Record<string, unknown>> {
+    console.log(dto);
     const payload = {
       messaging_product: 'whatsapp',
       to: dto.to,
@@ -162,8 +163,10 @@ export class MessagesService {
   ): Promise<Record<string, unknown>> {
     try {
       const { data } = await this.http.post<Record<string, unknown>>('/messages', payload);
+      console.log(data);
       return data;
     } catch (error) {
+      console.log(error);
       this.handleAxiosError(error);
     }
   }
