@@ -86,7 +86,7 @@ export class WebhookService {
   constructor(
     private readonly configService: ConfigService,
     private readonly messagesService: MessagesService,
-  ) {}
+  ) { }
 
   verifyWebhook(query: WebhookVerificationDto): string {
     if (query.verifyToken !== this.configService.webhookVerifyToken) {
@@ -102,6 +102,8 @@ export class WebhookService {
     rawBody: string,
     signatureHeader?: string,
   ): Promise<void> {
+    console.log('THIS FROM WEBHOOK', payload);
+
     this.assertValidSignature(rawBody, signatureHeader);
 
     if (!payload?.entry?.length) {
@@ -193,9 +195,8 @@ export class WebhookService {
 
     value.failures?.forEach((failure) =>
       this.logger.error(
-        `Template failure (${failure.code ?? 'n/a'}): ${failure.title ?? ''} ${
-          failure.message ?? ''
-        }`.trim(),
+        `Template failure (${failure.code ?? 'n/a'}): ${failure.title ?? ''} ${failure.message ?? ''
+          }`.trim(),
       ),
     );
   }
