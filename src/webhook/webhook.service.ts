@@ -102,7 +102,9 @@ export class WebhookService {
     rawBody: string,
     signatureHeader?: string,
   ): Promise<void> {
-    console.log('THIS FROM WEBHOOK', payload);
+    console.log('THIS FROM WEBHOOK PAYLOAD', payload);
+    console.log(payload.entry[0].changes[0]);
+
 
     this.assertValidSignature(rawBody, signatureHeader);
 
