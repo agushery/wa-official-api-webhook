@@ -42,6 +42,27 @@ export class ConfigService {
     return this.env.WHATSAPP_APP_SECRET;
   }
 
+  get allowedApiKeyHashes(): Buffer[] {
+    const raw = this.getRequired('AUTH_API_KEY_HASHES');
+    const hashes = raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    if (hashes.length === 0) {
+      throw new Error('AUTH_API_KEY_HASHES must contain at least one value');
+    }
+
+    const invalidHash = hashes.find((value) => !/^[a-f0-9]{64}$/i.test(value));
+    if (invalidHash) {
+      throw new Error(
+        `Invalid API key hash: ${invalidHash}. Expected a 64 character SHA-256 hex digest.`,
+      );
+    }
+
+    return hashes.map((value) => Buffer.from(value, 'hex'));
+  }
+
   private getRequired(key: string): string {
     const value = this.env[key];
     if (!value) {

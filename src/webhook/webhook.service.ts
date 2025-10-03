@@ -147,6 +147,8 @@ export class WebhookService {
       return;
     }
 
+    const businessPhoneNumberId = value.metadata?.phone_number_id ?? this.configService.whatsappPhoneNumberId;
+
     for (const message of value.messages) {
       const from = message.from ?? 'unknown';
       const type = message.type ?? 'unknown';
@@ -156,11 +158,27 @@ export class WebhookService {
         this.logger.debug(`Message is a reply to ${message.context.id}`);
       }
 
-      await this.messagesService.markMessageAsRead(message.id);
+      const isFromBusiness = from !== 'unknown' && from === businessPhoneNumberId;
+
+      if (!isFromBusiness) {
+        await this.messagesService.markMessageAsRead(message.id);
+      }
 
       if (message.type === 'text' && message.text?.body) {
         this.logger.debug(`Message body: ${message.text.body}`);
       }
+
+      if (from === 'unknown' || isFromBusiness) {
+        continue;
+      }
+
+      const buttonPayload = this.extractDownloadPayload(message);
+      if (buttonPayload) {
+        await this.handleDownloadButtonSelection(from, buttonPayload);
+        continue;
+      }
+
+      await this.sendAutoReply(from);
     }
   }
 
@@ -232,5 +250,117 @@ export class WebhookService {
 
   private computeSignature(rawBody: string, secret: string): string {
     return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  }
+
+  private async sendAutoReply(recipientWaId: string): Promise<void> {
+    const fullMessage = [
+      'Halo,',
+      'Untuk melakukan reservasi silahkan melalui Sobat Bunda dulu ya Bunda. Sobat Bunda bisa reservasi sejak H-7 sampai hari H!',
+      '',
+      '*Reservasi lebih mudah dan cepat? Lewat Sobat Bunda aja!*',
+      '',
+      'Android di Google Playstore: https://s.id/sobatbunda-android',
+      '',
+      'IOS di Apple Store:',
+      'https://s.id/sobatbunda-ios',
+      '',
+      'Ada kendala? Chat kami di jam operasional WhatsApp pk 08.00-20.00 wita',
+    ].join('\n');
+
+    const interactivePayload = {
+      type: 'button',
+      body: {
+        text: 'Unduh aplikasi Sobat Bunda melalui tombol di bawah ini:',
+      },
+      footer: {
+        text: 'Kami siap membantu pukul 08.00-20.00 WITA.',
+      },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: {
+              id: 'DOWNLOAD_ANDROID',
+              title: 'Download Android',
+            },
+          },
+          {
+            type: 'reply',
+            reply: {
+              id: 'DOWNLOAD_IOS',
+              title: 'Download iOS',
+            },
+          },
+        ],
+      },
+    };
+
+    try {
+      await this.messagesService.sendTextMessage({
+        to: recipientWaId,
+        body: fullMessage,
+        previewUrl: false,
+      });
+
+      await this.messagesService.sendInteractiveMessage({
+        to: recipientWaId,
+        interactive: interactivePayload,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to send auto reply to ${recipientWaId}: ${message}`);
+    }
+  }
+
+  private extractDownloadPayload(message: WhatsAppMessage): string | undefined {
+    if (message.type === 'button' && message.button?.payload) {
+      return message.button.payload;
+    }
+
+    if (message.type === 'interactive' && message.interactive) {
+      const interactive = message.interactive as {
+        button_reply?: { id?: string };
+        list_reply?: { id?: string };
+      };
+
+      if (interactive.button_reply?.id) {
+        return interactive.button_reply.id;
+      }
+
+      if (interactive.list_reply?.id) {
+        return interactive.list_reply.id;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async handleDownloadButtonSelection(recipientWaId: string, payload: string): Promise<void> {
+    const normalizedPayload = payload.toUpperCase();
+    const downloadTargets: Record<string, { message: string }> = {
+      DOWNLOAD_ANDROID: {
+        message: 'Silakan unduh Sobat Bunda versi Android di sini: https://s.id/sobatbunda-android',
+      },
+      DOWNLOAD_IOS: {
+        message: 'Silakan unduh Sobat Bunda versi iOS di sini: https://s.id/sobatbunda-ios',
+      },
+    };
+
+    const target = downloadTargets[normalizedPayload];
+    if (!target) {
+      this.logger.warn(`Unhandled button payload received: ${payload}`);
+      return;
+    }
+
+    try {
+      await this.messagesService.sendTextMessage({
+        to: recipientWaId,
+        body: target.message,
+        previewUrl: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to respond to button payload ${payload} for ${recipientWaId}: ${message}`);
+    }
   }
 }

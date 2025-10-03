@@ -21,6 +21,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Optional | Business Account (WABA) ID. Needed for template listing. |
 | `WHATSAPP_APP_SECRET` | Optional | App secret used to validate webhook signatures. |
 | `WHATSAPP_API_VERSION` | No | Graph API version (defaults to `v17.0`). |
+| `AUTH_API_KEY_HASHES` | Yes | Comma-separated SHA-256 hex digests of API keys allowed to access protected endpoints. |
 
 ## Getting started
 
@@ -31,10 +32,26 @@ npm run start:dev
 
 By default the API is served under `http://localhost:3000/api`.
 
+## Authentication
+
+All non-webhook endpoints require an API key digest. Each request must include either an `Authorization: Bearer <sha256-digest>` header or the `X-API-Key: <sha256-digest>` header. The server performs a constant‑time comparison between the supplied digest and the SHA-256 hashes configured through `AUTH_API_KEY_HASHES`.
+
+To mint a new credential, generate a high-entropy secret, derive its SHA-256 digest, and share only the digest with clients:
+
+```bash
+API_KEY="$(openssl rand -base64 48)"
+HASH="$(printf "%s" "$API_KEY" | openssl dgst -sha256 | awk '{print $2}')"
+printf "Store digest in .env: %s\nSend digest to clients: %s\n" "$HASH" "$HASH"
+```
+
+Add the digest(s) to `AUTH_API_KEY_HASHES` in your `.env` file (comma-separated) and restart the service. Treat the digest itself as a bearer credential—rotate by issuing a new secret, updating the allowlist, and distributing the new digest.
+
 ## Webhook endpoints
 
 - `GET /api/webhook` – Verification endpoint. Meta sends `hub.mode`, `hub.challenge`, and `hub.verify_token`. Returns the challenge when the token matches `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
 - `POST /api/webhook` – Receives WhatsApp events (`messages`, `statuses`, template status updates). If `WHATSAPP_APP_SECRET` is supplied the request signature is validated against `X-Hub-Signature-256`.
+
+Incoming customer messages are automatically acknowledged with a Sobat Bunda reservation guide and quick download buttons for the Android and iOS apps; choosing a button returns the respective store link.
 
 Inbound messages are automatically marked as read. Console logs show message, status, and template updates so you can plug in your own handlers easily.
 

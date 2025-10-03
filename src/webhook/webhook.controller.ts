@@ -9,12 +9,14 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
 import type { Request } from 'express';
 import { WebhookVerificationDto } from './dto/webhook-verification.dto';
 import { WebhookService, type WhatsAppWebhookPayload } from './webhook.service';
 
 type RequestWithRawBody = Request & { rawBody?: Buffer };
 
+@Public()
 @Controller('webhook')
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
