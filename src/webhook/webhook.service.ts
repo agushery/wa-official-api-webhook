@@ -217,8 +217,9 @@ export class WebhookService {
         continue;
       }
 
-      this.log('messages', 'Dispatching auto reply', { to: from });
-      await this.sendAutoReply(from);
+      const contactName = this.getContactName(value.contacts, from);
+      this.log('messages', 'Dispatching auto reply', { to: from, contactName });
+      await this.sendAutoReply(from, contactName);
       this.log('messages', 'Auto reply dispatched', { to: from });
     }
   }
@@ -311,23 +312,24 @@ export class WebhookService {
     return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
   }
 
-  private async sendAutoReply(recipientWaId: string): Promise<void> {
+  private async sendAutoReply(recipientWaId: string, contactName?: string): Promise<void> {
+    const greeting = contactName ? `Hallo, ${contactName}?` : 'Hallo,';
     const messageBody = [
-      'Halo,',
+      greeting,
       'Untuk melakukan reservasi silahkan melalui Sobat Bunda dulu ya Bunda. Sobat Bunda bisa reservasi sejak H-7 sampai hari H!',
       '',
       '*Reservasi lebih mudah dan cepat? Lewat Sobat Bunda aja!*',
       '',
       'Android di Google Playstore: https://s.id/sobatbunda-android',
       '',
-      'IOS di Apple Store:',
-      'https://s.id/sobatbunda-ios',
+      'iOS di Apple Store: https://s.id/sobatbunda-ios',
       '',
-      'Ada kendala? Chat kami di jam operasional WhatsApp pk 08.00-20.00 wita',
+      'Chat ini otomatis dari sistem, mohon tidak membalas di sini.',
+      'Informasi selengkapnya: https://faq-sobatbunda.puribunda.com',
     ].join('\n');
 
     try {
-      this.debug('messages', 'Sending auto reply payload', { recipientWaId });
+      this.debug('messages', 'Sending auto reply payload', { recipientWaId, contactName });
       await this.messagesService.sendTextMessage({
         to: recipientWaId,
         body: messageBody,
@@ -338,40 +340,11 @@ export class WebhookService {
         length: messageBody.length,
       });
 
-      const interactivePayload = {
-        type: 'button',
-        body: {
-          text: 'Unduh aplikasi Sobat Bunda melalui tombol di bawah ini:',
-        },
-        footer: {
-          text: 'Kami siap membantu pukul 08.00-20.00 WITA.',
-        },
-        action: {
-          buttons: [
-            {
-              type: 'url' as const,
-              url: 'https://s.id/sobatbunda-android',
-              title: 'Download Android',
-            },
-            {
-              type: 'url' as const,
-              url: 'https://s.id/sobatbunda-ios',
-              title: 'Download iOS',
-            },
-          ],
-        },
-      };
-
-      this.debug('messages', 'Sending interactive download buttons', { recipientWaId });
-      await this.messagesService.sendInteractiveMessage({
-        to: recipientWaId,
-        interactive: interactivePayload,
-      });
-      this.debug('messages', 'Interactive download buttons sent', { recipientWaId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.error('messages', 'Failed to send auto reply', {
         recipientWaId,
+        contactName,
         error: message,
       });
     }
@@ -384,6 +357,18 @@ export class WebhookService {
 
     const businessPhoneNumberId = metadataPhoneNumberId ?? this.configService.whatsappPhoneNumberId;
     return sender === businessPhoneNumberId;
+  }
+
+  private getContactName(
+    contacts: WhatsAppChangeValue['contacts'] | undefined,
+    waId: string,
+  ): string | undefined {
+    if (!contacts?.length) {
+      return undefined;
+    }
+
+    const matchingContact = contacts.find((contact) => contact?.wa_id === waId);
+    return matchingContact?.profile?.name;
   }
 
   private log(type: string, message: string, meta?: Record<string, unknown>): void {
