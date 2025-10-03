@@ -253,6 +253,8 @@ export class WebhookService {
   }
 
   private async sendAutoReply(recipientWaId: string): Promise<void> {
+    console.log('AUTO REPLAY TO', recipientWaId);
+
     const fullMessage = [
       'Halo,',
       'Untuk melakukan reservasi silahkan melalui Sobat Bunda dulu ya Bunda. Sobat Bunda bisa reservasi sejak H-7 sampai hari H!',
