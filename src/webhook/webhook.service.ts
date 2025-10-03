@@ -277,8 +277,14 @@ export class WebhookService {
   }
 
   private assertValidSignature(rawBody: string, signatureHeader?: string): void {
+    if (!this.configService.webhookSignatureValidationEnabled) {
+      this.debug('webhook', 'Skipping signature validation (disabled by configuration)');
+      return;
+    }
+
     const appSecret = this.configService.appSecret;
     if (!appSecret) {
+      this.warn('webhook', 'Skipping signature validation because WHATSAPP_APP_SECRET is not set');
       return;
     }
 

@@ -20,6 +20,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `WHATSAPP_PHONE_NUMBER_ID` | Yes | Phone number ID that sends messages. |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Optional | Business Account (WABA) ID. Needed for template listing. |
 | `WHATSAPP_APP_SECRET` | Optional | App secret used to validate webhook signatures. |
+| `WHATSAPP_VALIDATE_WEBHOOK_SIGNATURE` | No | Set to `false` to skip signature validation (defaults to `true`). |
 | `WHATSAPP_API_VERSION` | No | Graph API version (defaults to `v17.0`). |
 | `AUTH_API_KEY_HASHES` | Yes | Comma-separated SHA-256 hex digests of API keys allowed to access protected endpoints. |
 
@@ -49,7 +50,7 @@ Add the digest(s) to `AUTH_API_KEY_HASHES` in your `.env` file (comma-separated)
 ## Webhook endpoints
 
 - `GET /api/webhook` – Verification endpoint. Meta sends `hub.mode`, `hub.challenge`, and `hub.verify_token`. Returns the challenge when the token matches `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
-- `POST /api/webhook` – Receives WhatsApp events (`messages`, `statuses`, template status updates). If `WHATSAPP_APP_SECRET` is supplied the request signature is validated against `X-Hub-Signature-256`.
+- `POST /api/webhook` – Receives WhatsApp events (`messages`, `statuses`, template status updates`). If`WHATSAPP_APP_SECRET` is supplied the request signature is validated against `X-Hub-Signature-256` unless `WHATSAPP_VALIDATE_WEBHOOK_SIGNATURE=false`.
 
 Incoming customer messages are automatically acknowledged with a Sobat Bunda reservation guide that includes download links for the Android and iOS apps.
 

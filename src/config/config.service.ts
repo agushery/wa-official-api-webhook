@@ -63,6 +63,15 @@ export class ConfigService {
     return hashes.map((value) => Buffer.from(value, 'hex'));
   }
 
+  get webhookSignatureValidationEnabled(): boolean {
+    const raw = this.env.WHATSAPP_VALIDATE_WEBHOOK_SIGNATURE;
+    if (raw === undefined) {
+      return true;
+    }
+
+    return !['false', '0', 'no', 'off'].includes(raw.trim().toLowerCase());
+  }
+
   private getRequired(key: string): string {
     const value = this.env[key];
     if (!value) {
