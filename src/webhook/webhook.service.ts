@@ -118,9 +118,13 @@ export class WebhookService {
       this.debug('webhook', 'Processing entry', {
         entryId: entry?.id,
         changes: entry?.changes?.length ?? 0,
+        rawEntry: entry,
       });
 
       if (!entry?.changes?.length) {
+        this.warn('webhook', 'Entry had no changes array', {
+          entryId: entry?.id,
+        });
         continue;
       }
 
@@ -129,6 +133,8 @@ export class WebhookService {
         this.debug(field, 'Processing change', {
           entryId: entry?.id,
           field,
+          hasValue: Boolean(change.value),
+          topLevelKeys: change.value ? Object.keys(change.value) : [],
         });
         switch (field) {
           case 'messages':
@@ -151,9 +157,17 @@ export class WebhookService {
 
   private async processMessagesChange(value?: WhatsAppChangeValue): Promise<void> {
     if (!value?.messages?.length) {
-      this.warn('messages', 'Change payload contained no messages');
+      this.warn('messages', 'Change payload contained no messages', {
+        metadata: value?.metadata,
+        contacts: value?.contacts,
+      });
       return;
     }
+
+    this.debug('messages', 'Processing messages change', {
+      messageCount: value.messages.length,
+      metadata: value.metadata,
+    });
 
     for (const message of value.messages) {
       const from = message.from ?? 'unknown';
@@ -172,6 +186,11 @@ export class WebhookService {
       }
 
       const isFromBusiness = this.isMessageFromBusiness(from, value.metadata?.phone_number_id);
+      this.debug('messages', 'Determined message source', {
+        from,
+        isFromBusiness,
+        metadataPhoneNumberId: value.metadata?.phone_number_id,
+      });
 
       if (!isFromBusiness) {
         this.debug('messages', 'Marking message as read', { messageId: message.id });
@@ -206,7 +225,9 @@ export class WebhookService {
 
   private processStatusesChange(value?: WhatsAppChangeValue): void {
     if (!value?.statuses?.length) {
-      this.warn('statuses', 'Change payload contained no statuses');
+      this.warn('statuses', 'Change payload contained no statuses', {
+        metadata: value?.metadata,
+      });
       return;
     }
 
@@ -305,6 +326,10 @@ export class WebhookService {
         to: recipientWaId,
         body: messageBody,
         previewUrl: true,
+      });
+      this.debug('messages', 'Auto reply send request posted', {
+        recipientWaId,
+        length: messageBody.length,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
