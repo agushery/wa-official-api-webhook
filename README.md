@@ -52,7 +52,7 @@ Add the digest(s) to `AUTH_API_KEY_HASHES` in your `.env` file (comma-separated)
 - `GET /api/webhook` – Verification endpoint. Meta sends `hub.mode`, `hub.challenge`, and `hub.verify_token`. Returns the challenge when the token matches `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
 - `POST /api/webhook` – Receives WhatsApp events (`messages`, `statuses`, template status updates`). If`WHATSAPP_APP_SECRET` is supplied the request signature is validated against `X-Hub-Signature-256` unless `WHATSAPP_VALIDATE_WEBHOOK_SIGNATURE=false`.
 
-Incoming customer messages are automatically acknowledged with a Sobat Bunda reservation guide that includes download links for the Android and iOS apps.
+Incoming customer messages are automatically acknowledged with a Sobat Bunda reservation guide plus quick download buttons for the Android and iOS apps.
 
 Inbound messages are automatically marked as read. Console logs show message, status, and template updates so you can plug in your own handlers easily.
 

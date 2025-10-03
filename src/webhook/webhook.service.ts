@@ -337,6 +337,37 @@ export class WebhookService {
         recipientWaId,
         length: messageBody.length,
       });
+
+      const interactivePayload = {
+        type: 'button',
+        body: {
+          text: 'Unduh aplikasi Sobat Bunda melalui tombol di bawah ini:',
+        },
+        footer: {
+          text: 'Kami siap membantu pukul 08.00-20.00 WITA.',
+        },
+        action: {
+          buttons: [
+            {
+              type: 'url' as const,
+              url: 'https://s.id/sobatbunda-android',
+              title: 'Download Android',
+            },
+            {
+              type: 'url' as const,
+              url: 'https://s.id/sobatbunda-ios',
+              title: 'Download iOS',
+            },
+          ],
+        },
+      };
+
+      this.debug('messages', 'Sending interactive download buttons', { recipientWaId });
+      await this.messagesService.sendInteractiveMessage({
+        to: recipientWaId,
+        interactive: interactivePayload,
+      });
+      this.debug('messages', 'Interactive download buttons sent', { recipientWaId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.error('messages', 'Failed to send auto reply', {
