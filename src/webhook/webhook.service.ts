@@ -93,7 +93,7 @@ export class WebhookService {
       throw new ForbiddenException('Invalid verify token');
     }
 
-    this.logger.log('Webhook verified successfully');
+    this.log('webhook', 'Webhook verified successfully');
     return query.challenge;
   }
 
@@ -102,26 +102,34 @@ export class WebhookService {
     rawBody: string,
     signatureHeader?: string,
   ): Promise<void> {
-    console.log('THIS FROM WEBHOOK PAYLOAD', payload);
-    console.log('THIS IS CHANGES', payload.entry[0].changes[0]);
-    console.log("THIS IS MESSAGE", payload.entry[0].changes[0].value.messages[0]);
-
-
+    this.debug('webhook', 'Received webhook payload', {
+      object: payload?.object,
+      entries: payload?.entry?.length ?? 0,
+    });
 
     this.assertValidSignature(rawBody, signatureHeader);
 
     if (!payload?.entry?.length) {
-      this.logger.warn('Received webhook with no entries');
+      this.warn('webhook', 'Received webhook with no entries');
       return;
     }
 
     for (const entry of payload.entry) {
+      this.debug('webhook', 'Processing entry', {
+        entryId: entry?.id,
+        changes: entry?.changes?.length ?? 0,
+      });
+
       if (!entry?.changes?.length) {
         continue;
       }
 
       for (const change of entry.changes) {
         const field = change.field ?? 'unknown';
+        this.debug(field, 'Processing change', {
+          entryId: entry?.id,
+          field,
+        });
         switch (field) {
           case 'messages':
             await this.processMessagesChange(change.value);
@@ -134,7 +142,7 @@ export class WebhookService {
             this.processStatusesChange(change.value);
             break;
           default:
-            this.logger.warn(`Unhandled webhook field: ${field}`);
+            this.warn('webhook', 'Unhandled webhook field', { field });
             break;
         }
       }
@@ -143,59 +151,79 @@ export class WebhookService {
 
   private async processMessagesChange(value?: WhatsAppChangeValue): Promise<void> {
     if (!value?.messages?.length) {
-      this.logger.warn('messages change received with empty payload');
+      this.warn('messages', 'Change payload contained no messages');
       return;
     }
-
-    const businessPhoneNumberId = value.metadata?.phone_number_id ?? this.configService.whatsappPhoneNumberId;
 
     for (const message of value.messages) {
       const from = message.from ?? 'unknown';
       const type = message.type ?? 'unknown';
-      this.logger.log(`Received ${type} message from ${from}`);
+      this.log('messages', 'Received incoming message', {
+        from,
+        type,
+        messageId: message.id,
+        timestamp: message.timestamp,
+      });
 
       if (message.context?.id) {
-        this.logger.debug(`Message is a reply to ${message.context.id}`);
+        this.debug('messages', 'Message references previous context', {
+          replyTo: message.context.id,
+        });
       }
 
-      const isFromBusiness = from !== 'unknown' && from === businessPhoneNumberId;
+      const isFromBusiness = this.isMessageFromBusiness(from, value.metadata?.phone_number_id);
 
       if (!isFromBusiness) {
+        this.debug('messages', 'Marking message as read', { messageId: message.id });
         await this.messagesService.markMessageAsRead(message.id);
+        this.debug('messages', 'Marked message as read', { messageId: message.id });
       }
 
       if (message.type === 'text' && message.text?.body) {
-        this.logger.debug(`Message body: ${message.text.body}`);
+        this.debug('messages', 'Message body captured', {
+          snippet: message.text.body.slice(0, 160),
+        });
       }
 
       if (from === 'unknown' || isFromBusiness) {
+        if (from === 'unknown') {
+          this.warn('messages', 'Skipping message with unknown sender', {
+            messageId: message.id,
+          });
+        } else {
+          this.debug('messages', 'Skipping business-originated message', {
+            from,
+          });
+        }
         continue;
       }
 
-      const buttonPayload = this.extractDownloadPayload(message);
-      if (buttonPayload) {
-        await this.handleDownloadButtonSelection(from, buttonPayload);
-        continue;
-      }
-
+      this.log('messages', 'Dispatching auto reply', { to: from });
       await this.sendAutoReply(from);
+      this.log('messages', 'Auto reply dispatched', { to: from });
     }
   }
 
   private processStatusesChange(value?: WhatsAppChangeValue): void {
     if (!value?.statuses?.length) {
-      this.logger.warn('statuses change received with empty payload');
+      this.warn('statuses', 'Change payload contained no statuses');
       return;
     }
 
     for (const status of value.statuses) {
-      this.logger.log(`Message ${status.id ?? 'unknown'} status: ${status.status}`);
+      this.log('statuses', 'Received status update', {
+        messageId: status.id,
+        status: status.status,
+        recipientId: status.recipient_id,
+      });
 
       if (status.errors?.length) {
         status.errors.forEach((error) =>
-          this.logger.error(
-            `Delivery error (${error.code ?? 'n/a'}): ${error.title ?? ''} ${error.message ?? ''}`.trim(),
-          ),
+          this.error('statuses', 'Delivery error received', {
+            code: error.code,
+            title: error.title,
+            description: error.message,
+          }),
         );
       }
     }
@@ -203,23 +231,27 @@ export class WebhookService {
 
   private processTemplateUpdate(value: WhatsAppChangeValue | undefined, field: string): void {
     if (!value?.message_template_id && !value?.event) {
-      this.logger.warn(`${field} received without template details`);
+      this.warn('templates', 'Template update missing required details', { field });
       return;
     }
 
-    this.logger.log(
-      `Template ${value.message_template_id ?? 'unknown'} event ${value.event ?? 'unknown'}`,
-    );
+    this.log('templates', 'Received template event', {
+      templateId: value.message_template_id,
+      event: value.event,
+    });
 
     if (value.reason) {
-      this.logger.warn(`Template update reason: ${value.reason}`);
+      this.warn('templates', 'Template update reason provided', {
+        reason: value.reason,
+      });
     }
 
     value.failures?.forEach((failure) =>
-      this.logger.error(
-        `Template failure (${failure.code ?? 'n/a'}): ${failure.title ?? ''} ${failure.message ?? ''
-          }`.trim(),
-      ),
+      this.error('templates', 'Template failure received', {
+        code: failure.code,
+        title: failure.title,
+        description: failure.message,
+      }),
     );
   }
 
@@ -253,9 +285,7 @@ export class WebhookService {
   }
 
   private async sendAutoReply(recipientWaId: string): Promise<void> {
-    console.log('AUTO REPLAY TO', recipientWaId);
-
-    const fullMessage = [
+    const messageBody = [
       'Halo,',
       'Untuk melakukan reservasi silahkan melalui Sobat Bunda dulu ya Bunda. Sobat Bunda bisa reservasi sejak H-7 sampai hari H!',
       '',
@@ -269,100 +299,57 @@ export class WebhookService {
       'Ada kendala? Chat kami di jam operasional WhatsApp pk 08.00-20.00 wita',
     ].join('\n');
 
-    const interactivePayload = {
-      type: 'button',
-      body: {
-        text: 'Unduh aplikasi Sobat Bunda melalui tombol di bawah ini:',
-      },
-      footer: {
-        text: 'Kami siap membantu pukul 08.00-20.00 WITA.',
-      },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: {
-              id: 'DOWNLOAD_ANDROID',
-              title: 'Download Android',
-            },
-          },
-          {
-            type: 'reply',
-            reply: {
-              id: 'DOWNLOAD_IOS',
-              title: 'Download iOS',
-            },
-          },
-        ],
-      },
-    };
-
     try {
+      this.debug('messages', 'Sending auto reply payload', { recipientWaId });
       await this.messagesService.sendTextMessage({
         to: recipientWaId,
-        body: fullMessage,
-        previewUrl: false,
-      });
-
-      await this.messagesService.sendInteractiveMessage({
-        to: recipientWaId,
-        interactive: interactivePayload,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to send auto reply to ${recipientWaId}: ${message}`);
-    }
-  }
-
-  private extractDownloadPayload(message: WhatsAppMessage): string | undefined {
-    if (message.type === 'button' && message.button?.payload) {
-      return message.button.payload;
-    }
-
-    if (message.type === 'interactive' && message.interactive) {
-      const interactive = message.interactive as {
-        button_reply?: { id?: string };
-        list_reply?: { id?: string };
-      };
-
-      if (interactive.button_reply?.id) {
-        return interactive.button_reply.id;
-      }
-
-      if (interactive.list_reply?.id) {
-        return interactive.list_reply.id;
-      }
-    }
-
-    return undefined;
-  }
-
-  private async handleDownloadButtonSelection(recipientWaId: string, payload: string): Promise<void> {
-    const normalizedPayload = payload.toUpperCase();
-    const downloadTargets: Record<string, { message: string }> = {
-      DOWNLOAD_ANDROID: {
-        message: 'Silakan unduh Sobat Bunda versi Android di sini: https://s.id/sobatbunda-android',
-      },
-      DOWNLOAD_IOS: {
-        message: 'Silakan unduh Sobat Bunda versi iOS di sini: https://s.id/sobatbunda-ios',
-      },
-    };
-
-    const target = downloadTargets[normalizedPayload];
-    if (!target) {
-      this.logger.warn(`Unhandled button payload received: ${payload}`);
-      return;
-    }
-
-    try {
-      await this.messagesService.sendTextMessage({
-        to: recipientWaId,
-        body: target.message,
+        body: messageBody,
         previewUrl: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to respond to button payload ${payload} for ${recipientWaId}: ${message}`);
+      this.error('messages', 'Failed to send auto reply', {
+        recipientWaId,
+        error: message,
+      });
+    }
+  }
+
+  private isMessageFromBusiness(sender: string | undefined, metadataPhoneNumberId?: string): boolean {
+    if (!sender || sender === 'unknown') {
+      return false;
+    }
+
+    const businessPhoneNumberId = metadataPhoneNumberId ?? this.configService.whatsappPhoneNumberId;
+    return sender === businessPhoneNumberId;
+  }
+
+  private log(type: string, message: string, meta?: Record<string, unknown>): void {
+    this.logger.log(this.formatLog(type, message, meta));
+  }
+
+  private debug(type: string, message: string, meta?: Record<string, unknown>): void {
+    this.logger.debug(this.formatLog(type, message, meta));
+  }
+
+  private warn(type: string, message: string, meta?: Record<string, unknown>): void {
+    this.logger.warn(this.formatLog(type, message, meta));
+  }
+
+  private error(type: string, message: string, meta?: Record<string, unknown>): void {
+    this.logger.error(this.formatLog(type, message, meta));
+  }
+
+  private formatLog(type: string, message: string, meta?: Record<string, unknown>): string {
+    const base = `[${type}] ${message}`;
+    if (!meta || Object.keys(meta).length === 0) {
+      return base;
+    }
+
+    try {
+      return `${base} ${JSON.stringify(meta)}`;
+    } catch {
+      return base;
     }
   }
 }
