@@ -186,36 +186,46 @@ export class WebhookService {
       }
 
       const isFromBusiness = this.isMessageFromBusiness(from, value.metadata?.phone_number_id);
+      const textBody = message.text?.body?.trim();
+      const isTextMessage = message.type === 'text' && Boolean(textBody);
+
       this.debug('messages', 'Determined message source', {
         from,
         isFromBusiness,
         metadataPhoneNumberId: value.metadata?.phone_number_id,
+        isTextMessage,
       });
 
-      if (!isFromBusiness) {
-        this.debug('messages', 'Marking message as read', { messageId: message.id });
-        await this.messagesService.markMessageAsRead(message.id);
-        this.debug('messages', 'Marked message as read', { messageId: message.id });
-      }
-
-      if (message.type === 'text' && message.text?.body) {
-        this.debug('messages', 'Message body captured', {
-          snippet: message.text.body.slice(0, 160),
+      if (from === 'unknown') {
+        this.warn('messages', 'Skipping message with unknown sender', {
+          messageId: message.id,
         });
-      }
-
-      if (from === 'unknown' || isFromBusiness) {
-        if (from === 'unknown') {
-          this.warn('messages', 'Skipping message with unknown sender', {
-            messageId: message.id,
-          });
-        } else {
-          this.debug('messages', 'Skipping business-originated message', {
-            from,
-          });
-        }
         continue;
       }
+
+      if (isFromBusiness) {
+        this.debug('messages', 'Skipping business-originated message', {
+          from,
+        });
+        continue;
+      }
+
+      if (!isTextMessage) {
+        this.debug('messages', 'Skipping non-text user message', {
+          from,
+          type,
+          hasTextBody: Boolean(message.text?.body),
+        });
+        continue;
+      }
+
+      this.debug('messages', 'Marking message as read', { messageId: message.id });
+      await this.messagesService.markMessageAsRead(message.id);
+      this.debug('messages', 'Marked message as read', { messageId: message.id });
+
+      this.debug('messages', 'Message body captured', {
+        snippet: textBody.slice(0, 160),
+      });
 
       const contactName = this.getContactName(value.contacts, from);
       this.log('messages', 'Dispatching auto reply', { to: from, contactName });
@@ -316,6 +326,7 @@ export class WebhookService {
     const greeting = contactName ? `Hallo, ${contactName}?` : 'Hallo,';
     const messageBody = [
       greeting,
+      '',
       'Untuk melakukan reservasi silahkan melalui Sobat Bunda dulu ya Bunda. Sobat Bunda bisa reservasi sejak H-7 sampai hari H!',
       '',
       '*Reservasi lebih mudah dan cepat? Lewat Sobat Bunda aja!*',
@@ -325,6 +336,7 @@ export class WebhookService {
       'iOS di Apple Store: https://s.id/sobatbunda-ios',
       '',
       'Chat ini otomatis dari sistem, mohon tidak membalas di sini.',
+      '',
       'Informasi selengkapnya: https://faq-sobatbunda.puribunda.com',
     ].join('\n');
 
